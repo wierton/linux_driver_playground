@@ -1,17 +1,17 @@
-cfiles != find . -name "*.c" 2>/dev/null | sed 's/^\.\///g'
-obj-m  := $(cfiles:.c=.o)
+obj-m  := hello.o
 PWD    != pwd
 KVER   != uname -r
 KDIR   := /lib/modules/$(KVER)/build/
+target-ko := $(obj-m:.o=.ko)
 
 all:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 install:
-	sudo insmod $(cfiles:.c=.ko)
+	sudo insmod $(target-ko)
 
 uninstall:
-	sudo rmsmod $(cfiles:.c=.ko)
+	sudo rmmod $(target-ko)
 
 clean:
-	rm -rf *.o *.mod.c *.mod.o *.ko *.symvers *.order *.a
+	$(MAKE) -C $(KDIR) M=$(PWD) clean

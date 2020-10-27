@@ -8,6 +8,7 @@ static int __init hello_init(void) {
 
 static void __exit hello_exit(void) {
   printk(KERN_INFO "module exit success\n");
+  printk("nothing as prefix, module exit success\n");
 }
 
 module_init(hello_init);
