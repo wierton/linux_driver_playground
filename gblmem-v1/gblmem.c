@@ -4,6 +4,8 @@
 #include <linux/major.h>
 #include <linux/module.h>
 #include <linux/uio.h>
+#include <linux/uaccess.h>
+#include <linux/vmalloc.h>
 
 #define GBLMEM_MAJOR 230
 #define GBLMEM_SIZE 1024
