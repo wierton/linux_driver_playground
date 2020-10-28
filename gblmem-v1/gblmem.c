@@ -26,8 +26,7 @@ static int gblmem_open(
 
 static ssize_t gblmem_read(struct file *filp,
     char __user *buf, size_t len, loff_t *ppos) {
-  struct gblmem_dev *devp = container_of(
-      filp->private_data, struct gblmem_dev, mem);
+  struct gblmem_dev *devp = filp->private_data;
   loff_t pos = *ppos;
   if (pos < 0) return -EINVAL;
   if (pos >= GBLMEM_SIZE) return 0;
@@ -46,8 +45,7 @@ static ssize_t gblmem_read(struct file *filp,
 
 static ssize_t gblmem_write(struct file *filp,
     const char __user *buf, size_t len, loff_t *ppos) {
-  struct gblmem_dev *devp = container_of(
-      filp->private_data, struct gblmem_dev, mem);
+  struct gblmem_dev *devp = filp->private_data;
   loff_t pos = *ppos;
   if (pos < 0) return -EINVAL;
   if (pos >= GBLMEM_SIZE) return 0;
