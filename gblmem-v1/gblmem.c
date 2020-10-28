@@ -27,9 +27,12 @@ static ssize_t gblmem_read(struct file *filp,
   struct gblmem_dev *devp = container_of(
       filp->private_data, struct gblmem_dev, mem);
   loff_t pos = *ppos;
-  if (pos < 0 || pos >= GBLMEM_SIZE) return -EINVAL;
+  if (pos < 0) return -EINVAL;
+  if (pos >= GBLMEM_SIZE) return 0;
+  printk("gblmem_read: %p, %p\n", &filp->f_pos, ppos);
 
-  if (pos + len >= GBLMEM_SIZE) len = GBLMEM_SIZE - pos;
+  /* avoid ops + len overflow */
+  if (len >= GBLMEM_SIZE - pos) len = GBLMEM_SIZE - pos;
 
   if (copy_to_user(buf, devp->mem + pos, len)) {
     return -EFAULT;
@@ -44,9 +47,10 @@ static ssize_t gblmem_write(struct file *filp,
   struct gblmem_dev *devp = container_of(
       filp->private_data, struct gblmem_dev, mem);
   loff_t pos = *ppos;
-  if (pos < 0 || pos >= GBLMEM_SIZE) return -EINVAL;
+  if (pos < 0) return -EINVAL;
+  if (pos >= GBLMEM_SIZE) return 0;
 
-  if (pos + len >= GBLMEM_SIZE) len = GBLMEM_SIZE - pos;
+  if (len >= GBLMEM_SIZE - pos) len = GBLMEM_SIZE - pos;
 
   if (copy_from_user(devp->mem + pos, buf, len)) {
     return -EFAULT;
@@ -92,26 +96,28 @@ static const struct file_operations gblmem_ops = {
 };
 
 static int __init gblmem_init(void) {
-  int ret = 0;
+  int err_code = 0;
   dev_t dev = MKDEV(GBLMEM_MAJOR, 0);
   gblmem_devp = vzalloc(sizeof(struct gblmem_dev));
 
   if (!gblmem_devp) goto error_malloc;
 
-  ret = register_chrdev_region(dev, 1, "gblmem");
-  if (ret) goto error;
+  err_code = register_chrdev_region(dev, 1, "gblmem");
+  if (err_code < 0) goto error_register_region;
 
   cdev_init(&gblmem_devp->cdev, &gblmem_ops);
   gblmem_devp->cdev.owner = THIS_MODULE;
-  ret = cdev_add(&gblmem_devp->cdev, dev, 1);
-  if (ret) goto error_region;
+  err_code = cdev_add(&gblmem_devp->cdev, dev, 1);
+  if (err_code < 0) goto error_cdev_add;
 
   return 0;
 
-error_region:
-  unregister_chrdev_region(dev, 1);
-error:
-  return ret;
+error_cdev_add:
+  printk("Fail to invoke cdev_add\n");
+
+error_register_region:
+  vfree(gblmem_devp);
+  return err_code;
 
 error_malloc:
   return -ENOMEM;
