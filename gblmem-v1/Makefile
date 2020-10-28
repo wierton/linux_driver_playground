@@ -13,5 +13,9 @@ install:
 uninstall:
 	sudo rmmod $(target-ko)
 
+node:
+	sudo mknod gblmem c 230 0
+	sudo chown $(shell whoami):$(shell whoami) gblmem
+
 clean:
 	$(MAKE) -C $(KDIR) M=$(PWD) clean

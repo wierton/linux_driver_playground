@@ -30,7 +30,6 @@ static ssize_t gblmem_read(struct file *filp,
   loff_t pos = *ppos;
   if (pos < 0) return -EINVAL;
   if (pos >= GBLMEM_SIZE) return 0;
-  printk("gblmem_read: %p, %p\n", &filp->f_pos, ppos);
 
   /* avoid ops + len overflow */
   if (len >= GBLMEM_SIZE - pos) len = GBLMEM_SIZE - pos;
@@ -84,12 +83,32 @@ static loff_t gblmem_llseek(
   return filp->f_pos;
 }
 
+static long gblmem_ioctl(struct file *filp, unsigned int cmd,
+    unsigned long arg) {
+  int err_code = 0;
+  unsigned long size = GBLMEM_SIZE;
+  switch (cmd) {
+  case BLKGETSIZE:
+    err_code = copy_to_user((char __user *)arg, &size, sizeof(arg));
+    printk("copy_to_user: %p, %lu, %d", (char *)arg, size, err_code);
+    if (err_code < 0) return -EFAULT;
+    return 0;
+  case BLKGETSIZE64:
+    err_code = copy_to_user((char __user *)arg, &size, sizeof(arg));
+    printk("copy_to_user: %p, %lu, %d", (char *)arg, size, err_code);
+    if (err_code < 0) return -EFAULT;
+    return 0;
+  default: return -EINVAL;
+  }
+}
+
 static const struct file_operations gblmem_ops = {
     .owner = THIS_MODULE,
     .open = gblmem_open,
     .read = gblmem_read,
     .write = gblmem_write,
     .llseek = gblmem_llseek,
+    .unlocked_ioctl = gblmem_ioctl,
 #if 0
   .ioctl = xx,
 #endif
