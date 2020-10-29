@@ -19,17 +19,17 @@ struct vmdisk_dev {
   struct gendisk *gd;
 };
 
-#define VMDISK_MAJOR 231
-#define NSECTORS 512
-#define HARDSECT_SIZE 4096
-#define KERNEL_SECTOR_SIZE 512
+static int VMDISK_MAJOR = 0;
+#define NSECTORS 4096
+#define HARDSECT_SIZE 512
+#define VMDISK_NAME "vmem_disk"
 
 struct vmdisk_dev vmdisk_shared_data;
 
 static void vmdisk_transfer(struct vmdisk_dev *devp, unsigned long sector,
     unsigned long nsect, char *buffer, int write) {
-  unsigned long offset = sector * KERNEL_SECTOR_SIZE;
-  unsigned long nbytes = sector * KERNEL_SECTOR_SIZE;
+  unsigned long offset = sector * HARDSECT_SIZE;
+  unsigned long nbytes = nsect * HARDSECT_SIZE;
 
   if ((offset + nbytes) > devp->size) {
     printk(KERN_NOTICE "beyond-end write (%ld %ld)\n", offset, nbytes);
@@ -65,7 +65,7 @@ static blk_qc_t vmdisk_make_request(struct request_queue *q, struct bio *bio) {
   status = vmdisk_xfer_bio(devp, bio);
   bio_endio(bio);
 
-  return (blk_qc_t){0};
+  return BLK_QC_T_NONE;
 }
 
 static int vmdisk_getgeo(struct block_device *bdev, struct hd_geometry *geo) {
@@ -80,6 +80,7 @@ static int vmdisk_getgeo(struct block_device *bdev, struct hd_geometry *geo) {
 }
 
 static struct block_device_operations vmdisk_ops = {
+    .owner = THIS_MODULE,
     .getgeo = vmdisk_getgeo,
 };
 
@@ -114,9 +115,9 @@ static void setup_device(struct vmdisk_dev *devp) {
   devp->gd->fops = &vmdisk_ops;
   devp->gd->queue = devp->queue;
   devp->gd->private_data = devp;
-  snprintf(devp->gd->disk_name, 32, "vmdisk");
+  snprintf(devp->gd->disk_name, 32, VMDISK_NAME);
 
-  set_capacity(devp->gd, NSECTORS * (HARDSECT_SIZE / KERNEL_SECTOR_SIZE));
+  set_capacity(devp->gd, NSECTORS);
   add_disk(devp->gd);
   return;
 
@@ -125,8 +126,13 @@ out_vfree:
 }
 
 static int __init vmdisk_init(void) {
-  int major = register_blkdev(VMDISK_MAJOR, "vmdisk");
-  if (major <= 0) { return -EBUSY; }
+  VMDISK_MAJOR = register_blkdev(0, VMDISK_NAME);
+  if (VMDISK_MAJOR <= 0) {
+    printk(KERN_NOTICE "failed on register major %d\n", VMDISK_MAJOR);
+    return -EBUSY;
+  } else {
+    printk(KERN_NOTICE "new major %d\n", VMDISK_MAJOR);
+  }
 
   setup_device(&vmdisk_shared_data);
   return 0;
@@ -134,7 +140,11 @@ static int __init vmdisk_init(void) {
 module_init(vmdisk_init);
 
 static void __exit vmdisk_exit(void) {
-  unregister_blkdev(VMDISK_MAJOR, "vmdisk");
+  unregister_blkdev(VMDISK_MAJOR, VMDISK_NAME);
+  if (vmdisk_shared_data.gd)
+    del_gendisk(vmdisk_shared_data.gd);
+  if (vmdisk_shared_data.queue)
+    blk_cleanup_queue(vmdisk_shared_data.queue);
 }
 module_exit(vmdisk_exit);
 
