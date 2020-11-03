@@ -3,6 +3,7 @@
 #include <linux/init.h>
 #include <linux/major.h>
 #include <linux/module.h>
+#include <linux/poll.h>
 #include <linux/sched.h>
 #include <linux/uaccess.h>
 #include <linux/uio.h>
@@ -13,7 +14,7 @@
 #define GBLFIFO_SIZE 1024
 
 #define klog(fmt, ...) \
-  printk(KERN_INFO "%s:%d: " fmt, __func__, __LINE__, ## __VA_ARGS__)
+  printk(KERN_INFO "%s:%d: " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 struct gblfifo_dev {
   unsigned curl;
@@ -21,6 +22,7 @@ struct gblfifo_dev {
   struct mutex mutex;
   wait_queue_head_t r_wait;
   wait_queue_head_t w_wait;
+  struct fasync_struct *async_queue;
   uint8_t mem[GBLFIFO_SIZE];
 };
 
@@ -113,6 +115,13 @@ static ssize_t gblfifo_write(
   } else {
     devp->curl += len;
     wake_up_interruptible(&devp->r_wait);
+
+    /* process async features */
+    if (devp->async_queue) {
+      kill_fasync(&devp->async_queue, SIGIO, POLL_IN);
+      klog("%s kill SIGIO\n", __func__);
+    }
+
     ret = len;
   }
 
@@ -141,13 +150,44 @@ static long gblfifo_ioctl(
   return 0;
 }
 
+static unsigned int gblfifo_poll(struct file *filp, poll_table *wait) {
+  unsigned int mask = 0;
+  struct gblfifo_dev *devp = filp->private_data;
+
+  mutex_lock(&devp->mutex);
+  poll_wait(filp, &devp->r_wait, wait);
+  poll_wait(filp, &devp->w_wait, wait);
+
+  if (devp->curl != 0) { mask |= POLLIN | POLLRDNORM; }
+
+  if (devp->curl != GBLFIFO_SIZE) { mask |= POLLOUT | POLLWRNORM; }
+
+  mutex_unlock(&devp->mutex);
+  return mask;
+}
+
+/* process FASYNC flag changing */
+static int gblfifo_fasync(int fd, struct file *filp, int mode) {
+  struct gblfifo_dev *devp = filp->private_data;
+  return fasync_helper(fd, filp, mode, &devp->async_queue);
+}
+
+static int gblfifo_release(struct inode *inode, struct file *filp) {
+  gblfifo_fasync(-1, filp, 0);
+  return 0;
+}
+
 static const struct file_operations gblfifo_ops = {
     .owner = THIS_MODULE,
     .open = gblfifo_open,
     .read = gblfifo_read,
     .write = gblfifo_write,
     .llseek = gblfifo_llseek,
+    .poll = gblfifo_poll,
     .unlocked_ioctl = gblfifo_ioctl,
+
+    .release = gblfifo_release,
+    .fasync = gblfifo_fasync,
 #if 0
   .ioctl = xx,
 #endif
